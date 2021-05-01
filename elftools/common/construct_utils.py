@@ -20,10 +20,11 @@ class RepeatUntilExcluding(Subconstruct):
 
         P.S. removed some code duplication
     """
-    __slots__ = ["predicate"]
-    def __init__(self, predicate, subcon):
+    __slots__ = ["predicate", 'terminator_value']
+    def __init__(self, predicate, subcon, terminator_value):
         Subconstruct.__init__(self, subcon)
         self.predicate = predicate
+        self.terminator_value = terminator_value
         self._clear_flag(self.FLAG_COPY_CONTEXT)
         self._set_flag(self.FLAG_DYNAMIC)
     def _parse(self, stream, context):
@@ -41,8 +42,28 @@ class RepeatUntilExcluding(Subconstruct):
         except ConstructError as ex:
             raise ArrayError("missing terminator", ex)
         return obj
+
     def _build(self, obj, stream, context):
-        raise NotImplementedError('no building')
+        terminated = False
+        if self.subcon.conflags & self.FLAG_COPY_CONTEXT:
+            for subobj in obj:
+                self.subcon._build(subobj, stream, context.__copy__())
+                if self.predicate(subobj, context):
+                    terminated = True
+                    break
+        else:
+            for subobj in obj:
+                self.subcon._build(subobj, stream, context.__copy__())
+                if self.predicate(subobj, context):
+                    terminated = True
+                    break
+        if terminated:
+            raise ArrayError("shoulld be missing terminator")
+        if not self.predicate(self.terminator_value, context):
+            raise ArrayError("Specified terminator isn't recognized as such!")
+
+        self.subcon._build(self.terminator_value, stream, context.__copy__())
+
     def _sizeof(self, context):
         raise SizeofError("can't calculate size")
 
@@ -64,6 +85,13 @@ class _ULEB128Adapter(Adapter):
         for b in reversed(obj):
             value = (value << 7) + (ord(b) & 0x7F)
         return value
+    
+    def _encode(self, obj, context):
+        b = b''
+        while obj > 0:
+            b += bytes([obj & 0x7f])
+            obj >>= 7
+        return b or b'\0'
 
 
 class _SLEB128Adapter(Adapter):

@@ -13,6 +13,7 @@ from ..construct import (
     Adapter, Struct, ConstructError, If, Enum, Array, PrefixedArray,
     CString, Embed, StaticField
     )
+from ..construct.lib.container import Container
 from ..common.construct_utils import RepeatUntilExcluding, ULEB128, SLEB128
 from .enums import *
 
@@ -172,7 +173,10 @@ class DWARFStructs(object):
                     obj.name == 'DW_AT_null' and obj.form == 'DW_FORM_null',
                 Struct('attr_spec',
                     Enum(self.Dwarf_uleb128('name'), **ENUM_DW_AT),
-                    Enum(self.Dwarf_uleb128('form'), **ENUM_DW_FORM))))
+                    Enum(self.Dwarf_uleb128('form'), **ENUM_DW_FORM)),
+                    terminator_value=Container(name='DW_AT_null', form='DW_FORM_null')
+            )
+        )
 
     def _create_dw_form(self):
         self.Dwarf_dw_form = dict(
@@ -258,13 +262,19 @@ class DWARFStructs(object):
             self.Dwarf_uint8('opcode_base'),
             Array(lambda ctx: ctx['opcode_base'] - 1,
                   self.Dwarf_uint8('standard_opcode_lengths')),
-            RepeatUntilExcluding(
+            RepeatUntilExcluding
+            (
                 lambda obj, ctx: obj == b'',
-                CString('include_directory')),
-            RepeatUntilExcluding(
+                CString('include_directory'),
+                terminator_value=b''
+            ),
+            RepeatUntilExcluding
+            (
                 lambda obj, ctx: len(obj.name) == 0,
-                self.Dwarf_lineprog_file_entry),
-            )
+                self.Dwarf_lineprog_file_entry,
+                terminator_value=Container(name=b'')
+            ),
+        )
 
     def _create_callframe_entry_headers(self):
         self.Dwarf_CIE_header = Struct('Dwarf_CIE_header',
@@ -317,3 +327,13 @@ class _InitialLengthAdapter(Adapter):
             else:
                 raise ConstructError("Failed decoding initial length for %X" % (
                     obj.first))
+
+    def _encode(self, obj, context):
+        class x:
+            first=None
+            second=None
+        assert type(obj) is int
+        if obj >= 0xffffffff:
+            return Container(first=0xffffffff, second=obj)
+        else:
+            return Container(first=obj,)
