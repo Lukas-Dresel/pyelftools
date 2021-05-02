@@ -88,10 +88,11 @@ class _ULEB128Adapter(Adapter):
     
     def _encode(self, obj, context):
         b = b''
-        while obj > 0:
-            b += bytes([obj & 0x7f])
+        while obj > 0x7f:
+            b += bytes([obj & 0x7f | 0x80])
             obj >>= 7
-        return b or b'\0'
+        b += bytes([obj])
+        return b
 
 
 class _SLEB128Adapter(Adapter):

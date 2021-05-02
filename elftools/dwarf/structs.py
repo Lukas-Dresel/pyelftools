@@ -336,4 +336,4 @@ class _InitialLengthAdapter(Adapter):
         if obj >= 0xffffffff:
             return Container(first=0xffffffff, second=obj)
         else:
-            return Container(first=obj,)
+            return Container(first=obj,second=None)
